@@ -393,8 +393,23 @@ def main():
     # 注册按钮消息处理器
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button_press))
 
-    logger.info("🚀 机器人启动成功！")
-    application.run_polling()
+    # 在 Railway 上使用 Webhook
+    port = int(os.environ.get("PORT", 8080))
+    webhook_url = os.getenv("RAILWAY_STATIC_URL")
+    
+    if webhook_url:
+        # 生产环境使用 Webhook
+        logger.info("🚀 使用 Webhook 模式启动")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=token,
+            webhook_url=f"{webhook_url}/{token}"
+        )
+    else:
+        # 开发环境使用 Polling
+        logger.info("🚀 使用 Polling 模式启动")
+        application.run_polling()
 
 if __name__ == "__main__":
     main()
