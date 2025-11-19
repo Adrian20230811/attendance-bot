@@ -4,7 +4,7 @@ import os
 import logging
 import sys
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, Filters
+from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters
 
 # 设置日志
 logging.basicConfig(
@@ -46,193 +46,41 @@ def seconds_to_hms(sec):
     s = sec % 60
     return f"{h}小时 {m}分 {s}秒"
 
-def create_main_keyboard():
-    """创建主功能键盘"""
+def create_simple_keyboard():
+    """创建最简单的键盘测试"""
     keyboard = [
-        ['📊 开始上班 Start Work', '😴 开始休息 Start Break'],
-        ['💼 结束休息 End Break', '🏁 下班打卡 End Work'],
-        ['📈 当前状态 Status', '🆘 帮助 Help']
+        ['上班', '休息'],
+        ['状态', '帮助']
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-
-def start(update: Update, context: CallbackContext):
-    welcome_text = (
-        "👋 欢迎使用考勤机器人！\n\n"
-        "📌 您可以使用以下按钮或命令：\n"
-        "• 📊 开始上班 - 上班打卡\n"
-        "• 😴 开始休息 - 开始休息\n" 
-        "• 💼 结束休息 - 结束休息\n"
-        "• 🏁 下班打卡 - 下班并生成报告\n"
-        "• 📈 当前状态 - 查看当前状态\n"
-        "• 🆘 帮助 - 显示此帮助信息\n\n"
-        "💡 提示：点击下方按钮快速操作！"
-    )
-    update.message.reply_text(welcome_text, reply_markup=create_main_keyboard())
-
-def startwork(update: Update, context: CallbackContext):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-
-    if user_id in data and data[user_id].get("status") == "working":
-        t = datetime.datetime.fromtimestamp(data[user_id]["start"])
-        return update.message.reply_text(f"⚠️ 你已于 {t.strftime('%H:%M:%S')} 开始上班")
-
-    data[user_id] = {
-        "start": now().timestamp(),
-        "breaks": [],
-        "status": "working"
-    }
-    save_data(data)
-
-    update.message.reply_text(
-        f"✅ 上班打卡成功！\n时间：{now().strftime('%H:%M:%S')}",
-        reply_markup=create_main_keyboard()
+    return ReplyKeyboardMarkup(
+        keyboard, 
+        resize_keyboard=True,
+        one_time_keyboard=False
     )
 
-def break_start(update: Update, context: CallbackContext):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-
-    if user_id not in data:
-        return update.message.reply_text("❌ 请先开始上班", reply_markup=create_main_keyboard())
-
-    if data[user_id]["status"] == "break":
-        return update.message.reply_text("😴 你已经在休息中", reply_markup=create_main_keyboard())
-
-    data[user_id]["breaks"].append({"start": now().timestamp(), "end": None})
-    data[user_id]["status"] = "break"
-    save_data(data)
-
-    update.message.reply_text("😴 已开始休息", reply_markup=create_main_keyboard())
-
-def break_end(update: Update, context: CallbackContext):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-
-    if user_id not in data:
-        return update.message.reply_text("❌ 请先开始上班", reply_markup=create_main_keyboard())
-
-    if data[user_id]["status"] == "working":
-        return update.message.reply_text("💼 你并未处于休息状态", reply_markup=create_main_keyboard())
-
-    for b in data[user_id]["breaks"]:
-        if b["end"] is None:
-            b["end"] = now().timestamp()
-            break
-
-    data[user_id]["status"] = "working"
-    save_data(data)
-
-    update.message.reply_text("💼 休息结束，继续工作!", reply_markup=create_main_keyboard())
-
-def endwork(update: Update, context: CallbackContext):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-
-    if user_id not in data:
-        return update.message.reply_text("❌ 你还未开始上班", reply_markup=create_main_keyboard())
-
-    user_data = data[user_id]
-    start_time = user_data["start"]
-    end_time = now().timestamp()
-
-    # 自动结束休息
-    if user_data["status"] == "break":
-        for b in user_data["breaks"]:
-            if b["end"] is None:
-                b["end"] = end_time
-                break
-
-    total = end_time - start_time
-    break_time = sum((b["end"] - b["start"]) for b in user_data["breaks"])
-    work_time = total - break_time
-
-    report = (
-        "📋 **今日工作总结**\n\n"
-        f"🕐 上班：{datetime.datetime.fromtimestamp(start_time).strftime('%H:%M:%S')}\n"
-        f"🕔 下班：{datetime.datetime.fromtimestamp(end_time).strftime('%H:%M:%S')}\n\n"
-        f"⏱️ 总时间：{seconds_to_hms(int(total))}\n"
-        f"😴 休息：{seconds_to_hms(int(break_time))}\n"
-        f"💼 实际工作：{seconds_to_hms(int(work_time))}\n\n"
-        f"🎉 辛苦啦！"
+async def start(update: Update, context: CallbackContext):
+    """测试命令 - 只发送键盘"""
+    await update.message.reply_text(
+        "请点击下方按钮：",
+        reply_markup=create_simple_keyboard()
     )
 
-    del data[user_id]
-    save_data(data)
-
-    update.message.reply_text(report, reply_markup=create_main_keyboard())
-
-def status(update: Update, context: CallbackContext):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-
-    if user_id not in data:
-        return update.message.reply_text("📊 未上班，请先开始上班", reply_markup=create_main_keyboard())
-
-    d = data[user_id]
-    stat = "💼 工作中" if d["status"] == "working" else "😴 休息中"
-    breaks_count = len([b for b in d["breaks"] if b["end"] is not None])
-
-    update.message.reply_text(
-        f"📊 当前状态：{stat}\n"
-        f"🕐 上班时间：{datetime.datetime.fromtimestamp(d['start']).strftime('%H:%M:%S')}\n"
-        f"📅 日期：{datetime.datetime.fromtimestamp(d['start']).strftime('%Y-%m-%d')}\n"
-        f"😴 休息次数：{breaks_count}次",
-        reply_markup=create_main_keyboard()
-    )
-
-def handle_button_press(update: Update, context: CallbackContext):
-    """处理按钮点击事件"""
+async def handle_buttons(update: Update, context: CallbackContext):
+    """处理按钮点击"""
     text = update.message.text
-    
-    if "开始上班" in text or "Start Work" in text:
-        startwork(update, context)
-    elif "开始休息" in text or "Start Break" in text:
-        break_start(update, context)
-    elif "结束休息" in text or "End Break" in text:
-        break_end(update, context)
-    elif "下班打卡" in text or "End Work" in text:
-        endwork(update, context)
-    elif "当前状态" in text or "Status" in text:
-        status(update, context)
-    elif "帮助" in text or "Help" in text:
-        start(update, context)
-    else:
-        update.message.reply_text(
-            "❓ 未知命令，请使用下方按钮或输入 /start 查看帮助",
-            reply_markup=create_main_keyboard()
-        )
-
-def close_keyboard(update: Update, context: CallbackContext):
-    """关闭键盘"""
-    update.message.reply_text(
-        "⌨️ 键盘已关闭，发送 /start 重新打开",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text(f"你点击了: {text}")
 
 def main():
     try:
         token = get_token()
-        
-        # 使用旧版本的 Updater
-        updater = Updater(token, use_context=True)
-        dispatcher = updater.dispatcher
+        application = Application.builder().token(token).build()
 
-        # 添加命令处理器
-        dispatcher.add_handler(CommandHandler("start", start))
-        dispatcher.add_handler(CommandHandler("startwork", startwork))
-        dispatcher.add_handler(CommandHandler("break", break_start))
-        dispatcher.add_handler(CommandHandler("resume", break_end))
-        dispatcher.add_handler(CommandHandler("endwork", endwork))
-        dispatcher.add_handler(CommandHandler("status", status))
-        dispatcher.add_handler(CommandHandler("close", close_keyboard))
-        
-        # 添加按钮消息处理器
-        dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_button_press))
+        # 只添加最简单的处理器
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 
-        logger.info("🚀 机器人启动成功！")
-        updater.start_polling()
-        updater.idle()
+        logger.info("🚀 测试版机器人启动成功！")
+        application.run_polling()
         
     except Exception as e:
         logger.error(f"❌ 机器人启动失败: {e}")
