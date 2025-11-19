@@ -18,3 +18,12 @@
 - 📱 响应式键盘
 - 🔄 实时状态更新
 
+## 🚀 快速部署
+
+### Railway 部署（推荐）
+1. Fork 本仓库
+2. 前往 [Railway](https://railway.app/)
+3. 创建新项目 → 从 GitHub 导入
+4. 添加环境变量：
+   ```env
+   TOKEN=你的BotFather Token
