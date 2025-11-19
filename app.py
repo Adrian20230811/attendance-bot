@@ -4,7 +4,7 @@ import os
 import logging
 import sys
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # 设置日志
 logging.basicConfig(
@@ -46,8 +46,8 @@ def seconds_to_hms(sec):
     s = sec % 60
     return f"{h}小时 {m}分 {s}秒"
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "👋 欢迎使用考勤机器人！\n\n"
         "📌 指令列表：\n"
         "/startwork - 开始上班\n"
@@ -57,13 +57,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status - 查看当前状态"
     )
 
-async def startwork(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def startwork(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
     data = load_data()
 
     if user_id in data and data[user_id].get("status") == "working":
         t = datetime.datetime.fromtimestamp(data[user_id]["start"])
-        return await update.message.reply_text(f"⚠️ 你已于 {t.strftime('%H:%M:%S')} 开始上班")
+        return update.message.reply_text(f"⚠️ 你已于 {t.strftime('%H:%M:%S')} 开始上班")
 
     data[user_id] = {
         "start": now().timestamp(),
@@ -72,33 +72,33 @@ async def startwork(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     save_data(data)
 
-    await update.message.reply_text(f"✅ 上班打卡成功！\n时间：{now().strftime('%H:%M:%S')}")
+    update.message.reply_text(f"✅ 上班打卡成功！\n时间：{now().strftime('%H:%M:%S')}")
 
-async def break_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def break_start(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
     data = load_data()
 
     if user_id not in data:
-        return await update.message.reply_text("❌ 请先 /startwork 上班")
+        return update.message.reply_text("❌ 请先 /startwork 上班")
 
     if data[user_id]["status"] == "break":
-        return await update.message.reply_text("😴 你已经在休息中")
+        return update.message.reply_text("😴 你已经在休息中")
 
     data[user_id]["breaks"].append({"start": now().timestamp(), "end": None})
     data[user_id]["status"] = "break"
     save_data(data)
 
-    await update.message.reply_text("😴 已开始休息")
+    update.message.reply_text("😴 已开始休息")
 
-async def break_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def break_end(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
     data = load_data()
 
     if user_id not in data:
-        return await update.message.reply_text("❌ 请先 /startwork 上班")
+        return update.message.reply_text("❌ 请先 /startwork 上班")
 
     if data[user_id]["status"] == "working":
-        return await update.message.reply_text("💼 你并未处于休息状态")
+        return update.message.reply_text("💼 你并未处于休息状态")
 
     for b in data[user_id]["breaks"]:
         if b["end"] is None:
@@ -108,14 +108,14 @@ async def break_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data[user_id]["status"] = "working"
     save_data(data)
 
-    await update.message.reply_text("💼 休息结束，继续工作!")
+    update.message.reply_text("💼 休息结束，继续工作!")
 
-async def endwork(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def endwork(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
     data = load_data()
 
     if user_id not in data:
-        return await update.message.reply_text("❌ 你还未开始上班")
+        return update.message.reply_text("❌ 你还未开始上班")
 
     user_data = data[user_id]
     start = user_data["start"]
@@ -145,19 +145,19 @@ async def endwork(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del data[user_id]
     save_data(data)
 
-    await update.message.reply_text(report)
+    update.message.reply_text(report)
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def status(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
     data = load_data()
 
     if user_id not in data:
-        return await update.message.reply_text("📊 未上班，使用 /startwork 开始")
+        return update.message.reply_text("📊 未上班，使用 /startwork 开始")
 
     d = data[user_id]
     stat = "💼 工作中" if d["status"] == "working" else "😴 休息中"
 
-    await update.message.reply_text(
+    update.message.reply_text(
         f"📊 当前状态：{stat}\n"
         f"🕐 上班：{datetime.datetime.fromtimestamp(d['start']).strftime('%H:%M:%S')}"
     )
@@ -166,18 +166,21 @@ def main():
     try:
         token = get_token()
         
-        # 关键修复：使用 Application.builder() 而不是 ApplicationBuilder()
-        app = Application.builder().token(token).build()
+        # 使用旧版本的 Updater
+        updater = Updater(token, use_context=True)
+        dispatcher = updater.dispatcher
 
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("startwork", startwork))
-        app.add_handler(CommandHandler("break", break_start))
-        app.add_handler(CommandHandler("resume", break_end))
-        app.add_handler(CommandHandler("endwork", endwork))
-        app.add_handler(CommandHandler("status", status))
+        # 添加命令处理器
+        dispatcher.add_handler(CommandHandler("start", start))
+        dispatcher.add_handler(CommandHandler("startwork", startwork))
+        dispatcher.add_handler(CommandHandler("break", break_start))
+        dispatcher.add_handler(CommandHandler("resume", break_end))
+        dispatcher.add_handler(CommandHandler("endwork", endwork))
+        dispatcher.add_handler(CommandHandler("status", status))
 
         logger.info("🚀 机器人启动成功！")
-        app.run_polling()
+        updater.start_polling()
+        updater.idle()
         
     except Exception as e:
         logger.error(f"❌ 机器人启动失败: {e}")
